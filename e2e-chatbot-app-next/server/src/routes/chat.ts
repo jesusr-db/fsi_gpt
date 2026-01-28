@@ -47,6 +47,7 @@ import {
 } from '@databricks/ai-sdk-provider';
 import { ChatSDKError } from '@chat-template/core/errors';
 import { ProjectSessionMemory } from '../services/project-session-memory';
+import { mcpToolProvider } from '../services/mcp-tool-provider';
 
 export const chatRouter: RouterType = Router();
 
@@ -303,15 +304,23 @@ chatRouter.post('/', requireAuth, async (req: Request, res: Response) => {
     }
 
     const model = await myProvider.languageModel(selectedChatModel);
+
+    // Get MCP tools if available
+    const mcpTools = mcpToolProvider.getTools();
+
+    // Combine Databricks tool with MCP tools
+    const allTools = {
+      [DATABRICKS_TOOL_CALL_ID]: DATABRICKS_TOOL_DEFINITION,
+      ...mcpTools,
+    };
+
     const result = streamText({
       model,
       messages: messagesForModel,
       onFinish: ({ usage }) => {
         finalUsage = usage;
       },
-      tools: {
-        [DATABRICKS_TOOL_CALL_ID]: DATABRICKS_TOOL_DEFINITION,
-      },
+      tools: allTools,
     });
 
     /**

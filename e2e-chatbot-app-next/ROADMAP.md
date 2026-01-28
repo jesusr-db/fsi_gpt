@@ -1,6 +1,6 @@
 # Projects Feature Roadmap
 
-## ✅ Completed Phases (1-3)
+## ✅ Completed Phases (1-3, 5)
 
 ### Phase 1: Core Project Infrastructure
 - [x] Database schema for projects
@@ -28,9 +28,7 @@
 - [x] Context inheritance for new chats
 - [ ] Project templates
 
-## 📋 Future Roadmap
-
-### Phase 5: MCP Tool Capabilities
+## ✅ Phase 5: MCP Tool Capabilities (COMPLETED)
 **Priority: HIGH** - Enable AI to gather recent events and do additional research
 
 #### Overview
@@ -76,12 +74,13 @@ Enable the AI model to use MCP (Model Context Protocol) tools for gathering rece
 - Integration with enterprise data sources
 - Extensible through Unity Catalog connections
 
-#### Implementation Timeline
-- Databricks MCP client setup (2-3 hours)
-- Tool integration and conversion (3-4 hours)
-- External MCP configuration (2-3 hours)
-- Testing and documentation (2-3 hours)
-- **Total**: 1-2 days
+#### Implementation Status: ✅ COMPLETED (January 2024)
+- [x] Databricks MCP client setup
+- [x] Tool integration and conversion
+- [x] External MCP configuration
+- [x] Testing and documentation
+- [x] API endpoints for MCP management
+- [x] Environment variable configuration
 
 ### Phase 6: File Storage Migration to Databricks Volumes
 **Priority: HIGH** - Improve scalability and performance

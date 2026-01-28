@@ -18,7 +18,9 @@ import { messagesRouter } from './routes/messages';
 import { configRouter } from './routes/config';
 import { filesRouter } from './routes/files';
 import { projectsRouter } from './routes/projects';
+import { mcpRouter } from './routes/mcp';
 import { ChatSDKError } from '@chat-template/core/errors';
+import { mcpToolProvider } from './services/mcp-tool-provider';
 
 // ESM-compatible __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -58,6 +60,7 @@ app.use('/api/messages', messagesRouter);
 app.use('/api/config', configRouter);
 app.use('/api/files', filesRouter);
 app.use('/api/projects', projectsRouter);
+app.use('/api/mcp', mcpRouter);
 
 // Serve static files in production
 if (!isDevelopment) {
@@ -87,6 +90,16 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 
 // Start MSW mock server in test mode
 async function startServer() {
+  // Initialize MCP tool provider
+  try {
+    console.log('[MCP] Initializing MCP tool provider...');
+    await mcpToolProvider.initialize();
+    console.log('[MCP] MCP tool provider initialized successfully');
+  } catch (error) {
+    console.error('[MCP] Failed to initialize MCP tool provider:', error);
+    // Don't fail server startup if MCP initialization fails
+  }
+
   if (process.env.PLAYWRIGHT === 'True') {
     console.log('[Test Mode] Starting MSW mock server for API mocking...');
     try {
