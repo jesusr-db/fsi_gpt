@@ -3,11 +3,13 @@ import { ThemeProvider } from '@/components/theme-provider';
 import { SessionProvider } from '@/contexts/SessionContext';
 import { AppConfigProvider } from '@/contexts/AppConfigContext';
 import { DataStreamProvider } from '@/components/data-stream-provider';
+import { ProjectProvider } from '@/hooks/use-project';
 import { Toaster } from 'sonner';
 import RootLayout from '@/layouts/RootLayout';
 import ChatLayout from '@/layouts/ChatLayout';
 import NewChatPage from '@/pages/NewChatPage';
 import ChatPage from '@/pages/ChatPage';
+import ProjectPage from '@/pages/ProjectPage';
 
 function App() {
   return (
@@ -19,17 +21,20 @@ function App() {
     >
       <SessionProvider>
         <AppConfigProvider>
-          <DataStreamProvider>
-            <Toaster position="top-center" />
-            <Routes>
-              <Route path="/" element={<RootLayout />}>
-                <Route element={<ChatLayout />}>
-                  <Route index element={<NewChatPage />} />
-                  <Route path="chat/:id" element={<ChatPage />} />
+          <ProjectProvider>
+            <DataStreamProvider>
+              <Toaster position="top-center" />
+              <Routes>
+                <Route path="/" element={<RootLayout />}>
+                  <Route element={<ChatLayout />}>
+                    <Route index element={<NewChatPage />} />
+                    <Route path="chat/:id" element={<ChatPage />} />
+                    <Route path="project/:id" element={<ProjectPage />} />
+                  </Route>
                 </Route>
-              </Route>
-            </Routes>
-          </DataStreamProvider>
+              </Routes>
+            </DataStreamProvider>
+          </ProjectProvider>
         </AppConfigProvider>
       </SessionProvider>
     </ThemeProvider>

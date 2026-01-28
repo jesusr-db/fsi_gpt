@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { SidebarHistory } from '@/components/sidebar-history';
+import { SidebarProjects } from '@/components/sidebar-projects';
 import { SidebarUserNav } from '@/components/sidebar-user-nav';
 import { Button } from '@/components/ui/button';
 import {
@@ -11,9 +13,10 @@ import {
   SidebarMenu,
   useSidebar,
 } from '@/components/ui/sidebar';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Link } from 'react-router-dom';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
-import { PlusIcon } from 'lucide-react';
+import { PlusIcon, ClockIcon, FolderIcon } from 'lucide-react';
 import type { ClientSession } from '@chat-template/auth';
 
 export function AppSidebar({
@@ -25,6 +28,7 @@ export function AppSidebar({
 }) {
   const navigate = useNavigate();
   const { setOpenMobile } = useSidebar();
+  const [activeTab, setActiveTab] = useState('history');
 
   return (
     <Sidebar className="group-data-[side=left]:border-r-0">
@@ -62,10 +66,32 @@ export function AppSidebar({
             </Tooltip>
           </div>
         </SidebarMenu>
+
+        {/* Tabs for History and Projects */}
+        <div className="mt-4">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="history" className="flex items-center gap-1">
+                <ClockIcon className="h-3 w-3" />
+                <span className="text-xs">History</span>
+              </TabsTrigger>
+              <TabsTrigger value="projects" className="flex items-center gap-1">
+                <FolderIcon className="h-3 w-3" />
+                <span className="text-xs">Projects</span>
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
       </SidebarHeader>
+
       <SidebarContent>
-        <SidebarHistory user={user} />
+        {activeTab === 'history' ? (
+          <SidebarHistory user={user} />
+        ) : (
+          <SidebarProjects user={user} />
+        )}
       </SidebarContent>
+
       <SidebarFooter>
         {user && (
           <SidebarUserNav user={user} preferredUsername={preferredUsername} />

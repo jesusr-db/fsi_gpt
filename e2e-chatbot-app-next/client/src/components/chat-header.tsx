@@ -6,6 +6,9 @@ import { Button } from '@/components/ui/button';
 import { useSidebar } from './ui/sidebar';
 import { PlusIcon, CloudOffIcon } from 'lucide-react';
 import { useConfig } from '@/hooks/use-config';
+import { useAppConfig } from '@/contexts/AppConfigContext';
+import { ModelSelector } from '@/components/model-selector';
+import { ProjectIndicator } from '@/components/project-indicator';
 import {
   Tooltip,
   TooltipContent,
@@ -17,6 +20,7 @@ export function ChatHeader() {
   const navigate = useNavigate();
   const { open } = useSidebar();
   const { chatHistoryEnabled } = useConfig();
+  const { selectedModel, setSelectedModel } = useAppConfig();
 
   const { width: windowWidth } = useWindowSize();
 
@@ -37,21 +41,31 @@ export function ChatHeader() {
         </Button>
       )}
 
-      {!chatHistoryEnabled && (
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div className="ml-auto flex items-center gap-1.5 rounded-full bg-muted px-2 py-1 text-muted-foreground text-xs">
-                <CloudOffIcon className="h-3 w-3" />
-                <span className="hidden sm:inline">Ephemeral</span>
-              </div>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Chat history disabled - conversations are not saved</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      )}
+      <div className="flex items-center gap-2 ml-auto">
+        <ProjectIndicator />
+
+        <ModelSelector
+          selectedModel={selectedModel}
+          onModelChange={setSelectedModel}
+          className="hidden md:flex"
+        />
+
+        {!chatHistoryEnabled && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex items-center gap-1.5 rounded-full bg-muted px-2 py-1 text-muted-foreground text-xs">
+                  <CloudOffIcon className="h-3 w-3" />
+                  <span className="hidden sm:inline">Ephemeral</span>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Chat history disabled - conversations are not saved</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+      </div>
     </header>
   );
 }

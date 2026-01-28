@@ -61,6 +61,7 @@ export default function ChatPage() {
       isReadonly={isReadonly}
       session={session}
       initialLastContext={chat.lastContext ?? undefined}
+      projectId={chat.projectId}
     />
   );
 }

@@ -32,10 +32,12 @@ export const postRequestBodySchema = z.object({
       parts: z.array(partSchema),
     })
     .optional(),
-  selectedChatModel: z.enum(['chat-model', 'chat-model-reasoning']),
+  selectedChatModel: z.string().min(1), // Allow any model ID including Foundation Models
   selectedVisibilityType: z.enum(['public', 'private']),
   // Optional field for ephemeral mode: frontend sends previous conversation history
   previousMessages: z.array(previousMessageSchema).optional(),
+  // Optional project ID to associate chat with a project
+  projectId: z.string().uuid().nullable().optional(),
 });
 
 export type PostRequestBody = z.infer<typeof postRequestBodySchema>;

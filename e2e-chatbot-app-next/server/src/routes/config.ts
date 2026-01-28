@@ -5,6 +5,10 @@ import {
   type Router as RouterType,
 } from 'express';
 import { isDatabaseAvailable } from '@chat-template/db';
+import {
+  FOUNDATION_MODELS,
+  getDefaultFoundationModel,
+} from '@chat-template/ai-sdk-providers';
 
 export const configRouter: RouterType = Router();
 
@@ -17,5 +21,7 @@ configRouter.get('/', (_req: Request, res: Response) => {
     features: {
       chatHistory: isDatabaseAvailable(),
     },
+    availableModels: FOUNDATION_MODELS,
+    defaultModel: getDefaultFoundationModel(),
   });
 });

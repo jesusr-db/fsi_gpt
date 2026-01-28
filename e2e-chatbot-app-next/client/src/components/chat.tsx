@@ -6,6 +6,9 @@ import { ChatHeader } from '@/components/chat-header';
 import { fetchWithErrorHandlers, generateUUID } from '@/lib/utils';
 import { MultimodalInput } from './multimodal-input';
 import { Messages } from './messages';
+import { FileUploadArea, type UploadedFile } from './file-upload-area';
+import { FileContextManager } from './file-context-manager';
+import { ProjectContextIndicator } from './project-context-indicator';
 import type {
   Attachment,
   ChatMessage,
@@ -17,6 +20,7 @@ import { getChatHistoryPaginationKey } from './sidebar-history';
 import { toast } from './toast';
 import { useSearchParams } from 'react-router-dom';
 import { useChatVisibility } from '@/hooks/use-chat-visibility';
+import { useProject } from '@/hooks/use-project';
 import { ChatSDKError } from '@chat-template/core/errors';
 import { useDataStream } from './data-stream-provider';
 import { isCredentialErrorMessage } from '@/lib/oauth-error-utils';
@@ -32,6 +36,7 @@ export function Chat({
   initialVisibilityType,
   isReadonly,
   initialLastContext,
+  projectId,
 }: {
   id: string;
   initialMessages: ChatMessage[];
@@ -40,6 +45,7 @@ export function Chat({
   isReadonly: boolean;
   session: ClientSession;
   initialLastContext?: LanguageModelUsage;
+  projectId?: string | null;
 }) {
   const { visibilityType } = useChatVisibility({
     chatId: id,
@@ -48,12 +54,33 @@ export function Chat({
 
   const { mutate } = useSWRConfig();
   const { setDataStream } = useDataStream();
-  const { chatHistoryEnabled } = useAppConfig();
+  const { chatHistoryEnabled, selectedModel } = useAppConfig();
+  const { currentProject } = useProject();
 
   const [input, setInput] = useState<string>('');
   const [_usage, setUsage] = useState<LanguageModelUsage | undefined>(
     initialLastContext,
   );
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+
+  // Load existing files for this chat
+  useEffect(() => {
+    const loadFiles = async () => {
+      try {
+        const response = await fetch(`/api/files/${id}`);
+        if (response.ok) {
+          const data = await response.json();
+          setUploadedFiles(data.files || []);
+        }
+      } catch (error) {
+        console.error('Failed to load files:', error);
+      }
+    };
+
+    if (id && chatHistoryEnabled) {
+      loadFiles();
+    }
+  }, [id, chatHistoryEnabled]);
 
   const [streamCursor, setStreamCursor] = useState(0);
   const streamCursorRef = useRef(streamCursor);
@@ -137,8 +164,9 @@ export function Chat({
             // Only include message field for user messages (new messages)
             // For continuation (assistant messages with tool results), omit message field
             ...(isUserMessage ? { message: lastMessage } : {}),
-            selectedChatModel: initialChatModel,
+            selectedChatModel: selectedModel || initialChatModel,
             selectedVisibilityType: visibilityType,
+            projectId: currentProject?.id || null,
             nextMessageId: generateUUID(),
             // Send previous messages when:
             // 1. Database is disabled (ephemeral mode) - always need client-side messages
@@ -280,6 +308,16 @@ export function Chat({
       <div className="overscroll-behavior-contain flex h-dvh min-w-0 touch-pan-y flex-col bg-background">
         <ChatHeader />
 
+        {/* Show project context indicator if chat belongs to a project */}
+        {projectId && (
+          <ProjectContextIndicator
+            projectId={projectId}
+            projectName={currentProject?.name}
+            projectColor={currentProject?.color}
+            projectIcon={currentProject?.icon}
+          />
+        )}
+
         <Messages
           chatId={id}
           status={status}
@@ -292,21 +330,45 @@ export function Chat({
           selectedModelId={initialChatModel}
         />
 
-        <div className="sticky bottom-0 z-1 mx-auto flex w-full max-w-4xl gap-2 border-t-0 bg-background px-2 pb-3 md:px-4 md:pb-4">
+        <div className="sticky bottom-0 z-1 mx-auto flex w-full max-w-4xl flex-col gap-2 border-t-0 bg-background px-2 pb-3 md:px-4 md:pb-4">
           {!isReadonly && (
-            <MultimodalInput
-              chatId={id}
-              input={input}
-              setInput={setInput}
-              status={status}
-              stop={stop}
-              attachments={attachments}
-              setAttachments={setAttachments}
-              messages={messages}
-              setMessages={setMessages}
-              sendMessage={sendMessage}
-              selectedVisibilityType={visibilityType}
-            />
+            <>
+              {/* File Context Manager - shows uploaded files */}
+              {uploadedFiles.length > 0 && (
+                <FileContextManager
+                  chatId={id}
+                  uploadedFiles={uploadedFiles}
+                  onFileRemoved={(fileId) => {
+                    setUploadedFiles(prev => prev.filter(f => f.id !== fileId));
+                  }}
+                  className="mb-2"
+                />
+              )}
+
+              {/* File Upload Area - collapsible */}
+              <FileUploadArea
+                chatId={id}
+                onFileUploaded={(file) => {
+                  setUploadedFiles(prev => [...prev, file]);
+                }}
+                disabled={status === 'submitting'}
+                className="mb-2"
+              />
+
+              <MultimodalInput
+                chatId={id}
+                input={input}
+                setInput={setInput}
+                status={status}
+                stop={stop}
+                attachments={attachments}
+                setAttachments={setAttachments}
+                messages={messages}
+                setMessages={setMessages}
+                sendMessage={sendMessage}
+                selectedVisibilityType={visibilityType}
+              />
+            </>
           )}
         </div>
       </div>

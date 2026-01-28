@@ -1,4 +1,4 @@
-import type { Chat } from '@chat-template/db';
+import type { Chat, Project } from '@chat-template/db';
 import {
   SidebarMenuAction,
   SidebarMenuButton,
@@ -14,8 +14,9 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from './ui/dropdown-menu';
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import { useChatVisibility } from '@/hooks/use-chat-visibility';
 import {
   CircleCheck,
@@ -24,7 +25,12 @@ import {
   MoreHorizontalIcon,
   ShareIcon,
   TrashIcon,
+  FolderIcon,
+  MoveIcon,
 } from 'lucide-react';
+import { MoveChatToProject } from './move-chat-to-project';
+import useSWR from 'swr';
+import { fetcher } from '@/lib/utils';
 
 const PureChatItem = ({
   chat,
@@ -41,12 +47,31 @@ const PureChatItem = ({
     chatId: chat.id,
     initialVisibilityType: chat.visibility,
   });
+  const [showMoveDialog, setShowMoveDialog] = useState(false);
+
+  // Fetch projects to find the project this chat belongs to
+  const { data: projects } = useSWR<Project[]>('/api/projects', fetcher);
+  const chatProject = projects?.find((p) => p.id === chat.projectId);
 
   return (
     <SidebarMenuItem data-testid="chat-history-item">
       <SidebarMenuButton asChild isActive={isActive}>
         <Link to={`/chat/${chat.id}`} onClick={() => setOpenMobile(false)}>
-          <span>{chat.title}</span>
+          <div className="flex flex-1 items-center gap-2">
+            <span className="flex-1 truncate">{chat.title}</span>
+            {chatProject && (
+              <div className="flex items-center gap-1">
+                {chatProject.icon ? (
+                  <span className="text-xs">{chatProject.icon}</span>
+                ) : (
+                  <FolderIcon
+                    className="h-3 w-3 opacity-60"
+                    style={{ color: chatProject.color || undefined }}
+                  />
+                )}
+              </div>
+            )}
+          </div>
         </Link>
       </SidebarMenuButton>
 
@@ -63,6 +88,14 @@ const PureChatItem = ({
         </DropdownMenuTrigger>
 
         <DropdownMenuContent side="bottom" align="end">
+          <DropdownMenuItem
+            className="cursor-pointer"
+            onSelect={() => setShowMoveDialog(true)}
+          >
+            <MoveIcon />
+            <span>Move to Project</span>
+          </DropdownMenuItem>
+
           <DropdownMenuSub>
             <DropdownMenuSubTrigger className="cursor-pointer">
               <ShareIcon />
@@ -98,6 +131,8 @@ const PureChatItem = ({
             </DropdownMenuPortal>
           </DropdownMenuSub>
 
+          <DropdownMenuSeparator />
+
           <DropdownMenuItem
             className="cursor-pointer text-destructive focus:bg-destructive/15 focus:text-destructive dark:text-red-500"
             onSelect={() => onDelete(chat.id)}
@@ -107,6 +142,14 @@ const PureChatItem = ({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      {/* Move to Project Dialog */}
+      <MoveChatToProject
+        chat={chat}
+        open={showMoveDialog}
+        onOpenChange={setShowMoveDialog}
+        onSuccess={() => setShowMoveDialog(false)}
+      />
     </SidebarMenuItem>
   );
 };

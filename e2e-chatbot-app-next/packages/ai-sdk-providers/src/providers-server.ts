@@ -10,6 +10,11 @@ import {
 } from '@chat-template/auth';
 import { createDatabricksProvider } from '@databricks/ai-sdk-provider';
 import { extractReasoningMiddleware, wrapLanguageModel } from 'ai';
+import {
+  getFoundationModel,
+  isFoundationModel,
+  type FoundationModelId,
+} from './databricks-foundation-provider';
 
 // Use centralized authentication - only on server side
 async function getProviderToken(): Promise<string> {
@@ -259,7 +264,17 @@ export class OAuthAwareProvider implements SmartProvider {
       return cached.model;
     }
 
-    // Get the OAuth provider
+    // Check if this is a Foundation Model
+    if (isFoundationModel(id)) {
+      console.log(`[Provider] Using Foundation Model: ${id}`);
+      const model = await getFoundationModel(id as FoundationModelId);
+
+      // Cache the model
+      this.modelCache.set(id, { model, timestamp: Date.now() });
+      return model;
+    }
+
+    // Get the OAuth provider for agent endpoints
     const provider = await getOrCreateDatabricksProvider();
 
     const model = await (async () => {

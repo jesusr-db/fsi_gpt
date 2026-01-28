@@ -13,7 +13,22 @@ import {
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 
-import { chat, message, type DBMessage, type Chat } from './schema';
+import {
+  chat,
+  message,
+  fileUpload,
+  chatContext,
+  project,
+  projectFile,
+  projectContext,
+  type DBMessage,
+  type Chat,
+  type FileUpload,
+  type ChatContext,
+  type Project,
+  type ProjectFile,
+  type ProjectContext,
+} from './schema';
 import type { VisibilityType } from '@chat-template/utils';
 import { ChatSDKError } from '@chat-template/core/errors';
 import type { LanguageModelV2Usage } from '@ai-sdk/provider';
@@ -90,11 +105,13 @@ export async function saveChat({
   userId,
   title,
   visibility,
+  projectId,
 }: {
   id: string;
   userId: string;
   title: string;
   visibility: VisibilityType;
+  projectId?: string | null;
 }) {
   if (!isDatabaseAvailable()) {
     console.log('[saveChat] Database not available, skipping persistence');
@@ -108,6 +125,7 @@ export async function saveChat({
       userId,
       title,
       visibility,
+      projectId: projectId || null,
     });
   } catch (error) {
     console.error('[saveChat] Error saving chat:', error);
@@ -142,11 +160,13 @@ export async function getChatsByUserId({
   limit,
   startingAfter,
   endingBefore,
+  projectId,
 }: {
   id: string;
   limit: number;
   startingAfter: string | null;
   endingBefore: string | null;
+  projectId?: string | null;
 }) {
   if (!isDatabaseAvailable()) {
     console.log('[getChatsByUserId] Database not available, returning empty');
@@ -159,14 +179,34 @@ export async function getChatsByUserId({
     const query = async (whereCondition?: SQL<any>) => {
       const database = await ensureDb();
 
+      // Build the where clause with optional project filter
+      let finalCondition = eq(chat.userId, id);
+
+      if (projectId !== undefined) {
+        // If projectId is null, find chats without a project
+        // If projectId is a string, find chats with that project
+        const projectCondition = projectId === null
+          ? sql`${chat.projectId} IS NULL`
+          : eq(chat.projectId, projectId);
+        finalCondition = and(finalCondition, projectCondition);
+      }
+
+      if (whereCondition) {
+        finalCondition = and(whereCondition, finalCondition);
+      }
+
       return database
-        .select()
+        .select({
+          id: chat.id,
+          createdAt: chat.createdAt,
+          title: chat.title,
+          userId: chat.userId,
+          projectId: chat.projectId,
+          visibility: chat.visibility,
+          lastContext: chat.lastContext,
+        })
         .from(chat)
-        .where(
-          whereCondition
-            ? and(whereCondition, eq(chat.userId, id))
-            : eq(chat.userId, id),
-        )
+        .where(finalCondition)
         .orderBy(desc(chat.createdAt))
         .limit(extendedLimit);
     };
@@ -414,5 +454,577 @@ export async function updateChatLastContextById({
   } catch (error) {
     console.warn('Failed to update lastContext for chat', chatId, error);
     return;
+  }
+}
+
+// File upload queries
+
+export async function saveFileUpload({
+  id,
+  chatId,
+  userId,
+  filename,
+  contentType,
+  fileSize,
+  storagePath,
+  extractedContent,
+  metadata,
+}: {
+  id: string;
+  chatId?: string | null; // Made optional for session-only files
+  userId: string;
+  filename: string;
+  contentType: string;
+  fileSize: number;
+  storagePath?: string;
+  extractedContent?: string;
+  metadata?: Record<string, any>;
+}) {
+  if (!isDatabaseAvailable()) {
+    console.log('[saveFileUpload] Database not available, skipping save');
+    return;
+  }
+
+  try {
+    const [result] = await (await ensureDb())
+      .insert(fileUpload)
+      .values({
+        id,
+        chatId: chatId || null, // Allow null for session-only files
+        userId,
+        filename,
+        contentType,
+        fileSize,
+        storagePath: storagePath || null,
+        extractedContent: extractedContent || null,
+        metadata: metadata || {},
+        createdAt: new Date(),
+      })
+      .returning();
+
+    return result;
+  } catch (error) {
+    console.error('Failed to save file upload:', error);
+    throw new ChatSDKError('bad_request:db', 'Failed to save file upload');
+  }
+}
+
+export async function getFileUploadsByChatId({
+  chatId,
+}: {
+  chatId: string;
+}): Promise<FileUpload[]> {
+  if (!isDatabaseAvailable()) {
+    console.log('[getFileUploadsByChatId] Database not available, returning empty array');
+    return [];
+  }
+
+  try {
+    return await (await ensureDb())
+      .select()
+      .from(fileUpload)
+      .where(eq(fileUpload.chatId, chatId))
+      .orderBy(desc(fileUpload.createdAt));
+  } catch (error) {
+    console.error('Failed to get file uploads:', error);
+    return [];
+  }
+}
+
+export async function deleteFileUpload({ id }: { id: string }) {
+  if (!isDatabaseAvailable()) {
+    console.log('[deleteFileUpload] Database not available, skipping delete');
+    return;
+  }
+
+  try {
+    await (await ensureDb()).delete(fileUpload).where(eq(fileUpload.id, id));
+  } catch (error) {
+    console.error('Failed to delete file upload:', error);
+    throw new ChatSDKError('bad_request:db', 'Failed to delete file upload');
+  }
+}
+
+export async function saveChatContext({
+  chatId,
+  fileId,
+  contextType,
+  content,
+}: {
+  chatId: string;
+  fileId?: string;
+  contextType: 'file' | 'memory' | 'instruction';
+  content?: string;
+}) {
+  if (!isDatabaseAvailable()) {
+    console.log('[saveChatContext] Database not available, skipping save');
+    return;
+  }
+
+  try {
+    const [result] = await (await ensureDb())
+      .insert(chatContext)
+      .values({
+        chatId,
+        fileId: fileId || null,
+        contextType,
+        content: content || null,
+        createdAt: new Date(),
+      })
+      .returning();
+
+    return result;
+  } catch (error) {
+    console.error('Failed to save chat context:', error);
+    throw new ChatSDKError('bad_request:db', 'Failed to save chat context');
+  }
+}
+
+export async function getChatContexts({
+  chatId,
+}: {
+  chatId: string;
+}): Promise<ChatContext[]> {
+  if (!isDatabaseAvailable()) {
+    console.log('[getChatContexts] Database not available, returning empty array');
+    return [];
+  }
+
+  try {
+    return await (await ensureDb())
+      .select()
+      .from(chatContext)
+      .where(eq(chatContext.chatId, chatId))
+      .orderBy(desc(chatContext.createdAt));
+  } catch (error) {
+    console.error('Failed to get chat contexts:', error);
+    return [];
+  }
+}
+
+// Project queries
+
+export async function createProject({
+  userId,
+  name,
+  description,
+  color,
+  icon,
+  metadata,
+}: {
+  userId: string;
+  name: string;
+  description?: string;
+  color?: string;
+  icon?: string;
+  metadata?: Record<string, any>;
+}): Promise<Project | null> {
+  if (!isDatabaseAvailable()) {
+    console.log('[createProject] Database not available, skipping');
+    return null;
+  }
+
+  try {
+    const [result] = await (await ensureDb())
+      .insert(project)
+      .values({
+        userId,
+        name,
+        description: description || null,
+        color: color || null,
+        icon: icon || null,
+        metadata: metadata || {},
+      })
+      .returning();
+
+    return result;
+  } catch (error) {
+    console.error('[createProject] Failed to create project:', error);
+    throw new ChatSDKError('bad_request:database', 'Failed to create project');
+  }
+}
+
+export async function getProjectsByUserId({
+  userId,
+}: {
+  userId: string;
+}): Promise<Project[]> {
+  if (!isDatabaseAvailable()) {
+    console.log('[getProjectsByUserId] Database not available, returning empty');
+    return [];
+  }
+
+  try {
+    return await (await ensureDb())
+      .select()
+      .from(project)
+      .where(eq(project.userId, userId))
+      .orderBy(desc(project.createdAt));
+  } catch (error) {
+    console.error('[getProjectsByUserId] Failed to get projects:', error);
+    return [];
+  }
+}
+
+export async function getProjectById({
+  id,
+  userId,
+}: {
+  id: string;
+  userId: string;
+}): Promise<Project | null> {
+  if (!isDatabaseAvailable()) {
+    console.log('[getProjectById] Database not available, returning null');
+    return null;
+  }
+
+  try {
+    const [result] = await (await ensureDb())
+      .select()
+      .from(project)
+      .where(and(eq(project.id, id), eq(project.userId, userId)));
+
+    return result || null;
+  } catch (error) {
+    console.error('[getProjectById] Failed to get project:', error);
+    return null;
+  }
+}
+
+export async function updateProject({
+  id,
+  userId,
+  name,
+  description,
+  color,
+  icon,
+  isActive,
+  metadata,
+}: {
+  id: string;
+  userId: string;
+  name?: string;
+  description?: string;
+  color?: string;
+  icon?: string;
+  isActive?: boolean;
+  metadata?: Record<string, any>;
+}): Promise<Project | null> {
+  if (!isDatabaseAvailable()) {
+    console.log('[updateProject] Database not available, skipping');
+    return null;
+  }
+
+  try {
+    const updateData: any = {
+      updatedAt: new Date(),
+    };
+
+    if (name !== undefined) updateData.name = name;
+    if (description !== undefined) updateData.description = description;
+    if (color !== undefined) updateData.color = color;
+    if (icon !== undefined) updateData.icon = icon;
+    if (isActive !== undefined) updateData.isActive = isActive ? 'true' : 'false';
+    if (metadata !== undefined) updateData.metadata = metadata;
+
+    const [result] = await (await ensureDb())
+      .update(project)
+      .set(updateData)
+      .where(and(eq(project.id, id), eq(project.userId, userId)))
+      .returning();
+
+    return result || null;
+  } catch (error) {
+    console.error('[updateProject] Failed to update project:', error);
+    throw new ChatSDKError('bad_request:database', 'Failed to update project');
+  }
+}
+
+export async function deleteProject({
+  id,
+  userId,
+}: {
+  id: string;
+  userId: string;
+}): Promise<boolean> {
+  if (!isDatabaseAvailable()) {
+    console.log('[deleteProject] Database not available, skipping');
+    return false;
+  }
+
+  try {
+    const result = await (await ensureDb())
+      .delete(project)
+      .where(and(eq(project.id, id), eq(project.userId, userId)));
+
+    return true;
+  } catch (error) {
+    console.error('[deleteProject] Failed to delete project:', error);
+    throw new ChatSDKError('bad_request:database', 'Failed to delete project');
+  }
+}
+
+// Project-Chat association queries
+
+export async function addChatToProject({
+  chatId,
+  projectId,
+  userId,
+}: {
+  chatId: string;
+  projectId: string;
+  userId: string;
+}): Promise<boolean> {
+  if (!isDatabaseAvailable()) {
+    console.log('[addChatToProject] Database not available, skipping');
+    return false;
+  }
+
+  try {
+    await (await ensureDb())
+      .update(chat)
+      .set({ projectId })
+      .where(and(eq(chat.id, chatId), eq(chat.userId, userId)));
+
+    return true;
+  } catch (error) {
+    console.error('[addChatToProject] Failed to add chat to project:', error);
+    return false;
+  }
+}
+
+export async function removeChatFromProject({
+  chatId,
+  userId,
+}: {
+  chatId: string;
+  userId: string;
+}): Promise<boolean> {
+  if (!isDatabaseAvailable()) {
+    console.log('[removeChatFromProject] Database not available, skipping');
+    return false;
+  }
+
+  try {
+    await (await ensureDb())
+      .update(chat)
+      .set({ projectId: null })
+      .where(and(eq(chat.id, chatId), eq(chat.userId, userId)));
+
+    return true;
+  } catch (error) {
+    console.error('[removeChatFromProject] Failed to remove chat from project:', error);
+    return false;
+  }
+}
+
+export async function getChatsByProjectId({
+  projectId,
+  userId,
+}: {
+  projectId: string;
+  userId: string;
+}): Promise<Chat[]> {
+  if (!isDatabaseAvailable()) {
+    console.log('[getChatsByProjectId] Database not available, returning empty');
+    return [];
+  }
+
+  try {
+    return await (await ensureDb())
+      .select()
+      .from(chat)
+      .where(and(eq(chat.projectId, projectId), eq(chat.userId, userId)))
+      .orderBy(desc(chat.createdAt));
+  } catch (error) {
+    console.error('[getChatsByProjectId] Failed to get chats by project:', error);
+    return [];
+  }
+}
+
+// Project file queries
+
+export async function addFileToProject({
+  projectId,
+  fileId,
+  userId,
+}: {
+  projectId: string;
+  fileId: string;
+  userId: string;
+}): Promise<ProjectFile | null> {
+  if (!isDatabaseAvailable()) {
+    console.log('[addFileToProject] Database not available, skipping');
+    return null;
+  }
+
+  try {
+    const [result] = await (await ensureDb())
+      .insert(projectFile)
+      .values({
+        projectId,
+        fileId,
+        addedBy: userId,
+      })
+      .returning();
+
+    return result;
+  } catch (error) {
+    console.error('[addFileToProject] Failed to add file to project:', error);
+    return null;
+  }
+}
+
+export async function getProjectFiles({
+  projectId,
+}: {
+  projectId: string;
+}): Promise<FileUpload[]> {
+  if (!isDatabaseAvailable()) {
+    console.log('[getProjectFiles] Database not available, returning empty');
+    return [];
+  }
+
+  try {
+    const results = await (await ensureDb())
+      .select({
+        file: fileUpload,
+      })
+      .from(projectFile)
+      .innerJoin(fileUpload, eq(projectFile.fileId, fileUpload.id))
+      .where(eq(projectFile.projectId, projectId))
+      .orderBy(desc(projectFile.addedAt));
+
+    return results.map(r => r.file);
+  } catch (error) {
+    console.error('[getProjectFiles] Failed to get project files:', error);
+    return [];
+  }
+}
+
+export async function removeFileFromProject({
+  projectId,
+  fileId,
+}: {
+  projectId: string;
+  fileId: string;
+}): Promise<boolean> {
+  if (!isDatabaseAvailable()) {
+    console.log('[removeFileFromProject] Database not available, skipping');
+    return false;
+  }
+
+  try {
+    await (await ensureDb())
+      .delete(projectFile)
+      .where(and(eq(projectFile.projectId, projectId), eq(projectFile.fileId, fileId)));
+
+    return true;
+  } catch (error) {
+    console.error('[removeFileFromProject] Failed to remove file from project:', error);
+    return false;
+  }
+}
+
+// Project context queries
+
+export async function addProjectContext({
+  projectId,
+  contextType,
+  content,
+}: {
+  projectId: string;
+  contextType: 'instruction' | 'memory' | 'reference';
+  content: string;
+}): Promise<ProjectContext | null> {
+  if (!isDatabaseAvailable()) {
+    console.log('[addProjectContext] Database not available, skipping');
+    return null;
+  }
+
+  try {
+    const [result] = await (await ensureDb())
+      .insert(projectContext)
+      .values({
+        projectId,
+        contextType,
+        content,
+      })
+      .returning();
+
+    return result;
+  } catch (error) {
+    console.error('[addProjectContext] Failed to add project context:', error);
+    return null;
+  }
+}
+
+export async function getProjectContexts({
+  projectId,
+}: {
+  projectId: string;
+}): Promise<ProjectContext[]> {
+  if (!isDatabaseAvailable()) {
+    console.log('[getProjectContexts] Database not available, returning empty');
+    return [];
+  }
+
+  try {
+    return await (await ensureDb())
+      .select()
+      .from(projectContext)
+      .where(eq(projectContext.projectId, projectId))
+      .orderBy(desc(projectContext.createdAt));
+  } catch (error) {
+    console.error('[getProjectContexts] Failed to get project contexts:', error);
+    return [];
+  }
+}
+
+export async function updateProjectContext({
+  id,
+  content,
+}: {
+  id: string;
+  content: string;
+}): Promise<ProjectContext | null> {
+  if (!isDatabaseAvailable()) {
+    console.log('[updateProjectContext] Database not available, skipping');
+    return null;
+  }
+
+  try {
+    const [result] = await (await ensureDb())
+      .update(projectContext)
+      .set({ content, updatedAt: new Date() })
+      .where(eq(projectContext.id, id))
+      .returning();
+
+    return result || null;
+  } catch (error) {
+    console.error('[updateProjectContext] Failed to update project context:', error);
+    return null;
+  }
+}
+
+export async function deleteProjectContext({
+  id,
+}: {
+  id: string;
+}): Promise<boolean> {
+  if (!isDatabaseAvailable()) {
+    console.log('[deleteProjectContext] Database not available, skipping');
+    return false;
+  }
+
+  try {
+    await (await ensureDb())
+      .delete(projectContext)
+      .where(eq(projectContext.id, id));
+
+    return true;
+  } catch (error) {
+    console.error('[deleteProjectContext] Failed to delete project context:', error);
+    return false;
   }
 }

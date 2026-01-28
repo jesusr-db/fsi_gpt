@@ -25,6 +25,9 @@ import {
   updateChatLastContextById,
   updateChatVisiblityById,
   isDatabaseAvailable,
+  getChatById,
+  getProjectContexts,
+  getProjectFiles,
 } from '@chat-template/db';
 import {
   type ChatMessage,
@@ -43,10 +46,13 @@ import {
   extractApprovalStatus,
 } from '@databricks/ai-sdk-provider';
 import { ChatSDKError } from '@chat-template/core/errors';
+import { ProjectSessionMemory } from '../services/project-session-memory';
 
 export const chatRouter: RouterType = Router();
 
 const streamCache = new StreamCache();
+const sessionMemory = ProjectSessionMemory.getInstance();
+
 // Apply auth middleware to all chat routes
 chatRouter.use(authMiddleware);
 
@@ -81,11 +87,13 @@ chatRouter.post('/', requireAuth, async (req: Request, res: Response) => {
       message,
       selectedChatModel,
       selectedVisibilityType,
+      projectId,
     }: {
       id: string;
       message?: ChatMessage;
       selectedChatModel: string;
       selectedVisibilityType: VisibilityType;
+      projectId?: string | null;
     } = requestBody;
 
     const session = req.session;
@@ -116,6 +124,7 @@ chatRouter.post('/', requireAuth, async (req: Request, res: Response) => {
           userId: session.user.id,
           title,
           visibility: selectedVisibilityType,
+          projectId,
         });
       }
     } else {
@@ -205,10 +214,98 @@ chatRouter.post('/', requireAuth, async (req: Request, res: Response) => {
     let finalUsage: LanguageModelUsage | undefined;
     const streamId = generateUUID();
 
+    // Get file context for this chat
+    const fileContext = sessionMemory.getContextString(id);
+
+    // Get project context if chat belongs to a project
+    let projectContext: string | null = null;
+    let projectFileContext: string | null = null;
+
+    if (chat?.projectId) {
+      try {
+        // Initialize chat with project association
+        sessionMemory.initializeChatWithProject(id, chat.projectId);
+
+        // Fetch project context/instructions from database
+        const contexts = await getProjectContexts({ projectId: chat.projectId });
+        if (contexts.length > 0) {
+          projectContext = contexts
+            .map(ctx => `[${ctx.contextType}]: ${ctx.content}`)
+            .join('\n\n');
+
+          // Add instructions to session memory
+          for (const ctx of contexts) {
+            sessionMemory.addProjectInstructions(chat.projectId, ctx.content);
+          }
+        }
+
+        // Fetch project files from database
+        const projectFiles = await getProjectFiles({ projectId: chat.projectId });
+        if (projectFiles.length > 0) {
+          // Add project files to project context in session memory
+          for (const file of projectFiles) {
+            sessionMemory.addProjectFile(chat.projectId, file.id, {
+              id: file.id,
+              filename: file.filename,
+              contentType: file.contentType,
+              fileSize: file.fileSize,
+              extractedContent: file.extractedContent || '',
+              metadata: file.metadata || {},
+              createdAt: file.createdAt,
+            });
+          }
+
+          projectFileContext = projectFiles
+            .map(f => `- ${f.filename} (${f.contentType}, ${f.fileSize} bytes)`)
+            .join('\n');
+        }
+      } catch (error) {
+        console.warn('Failed to fetch project context:', error);
+      }
+    }
+
+    // Prepare messages with context
+    let messagesForModel = convertToModelMessages(uiMessages);
+    const systemMessages: any[] = [];
+
+    // Add project context as the first system message if available
+    if (projectContext) {
+      systemMessages.push({
+        role: 'system',
+        content: `Project Context and Instructions:\n\n${projectContext}`,
+      });
+    }
+
+    // Add file context (includes both project files and chat-specific files)
+    const allFileContext = sessionMemory.getContextString(id);
+    if (allFileContext || projectFileContext) {
+      let fileMessage = 'You have access to the following files:\n\n';
+
+      if (projectFileContext) {
+        fileMessage += 'Project Files:\n' + projectFileContext + '\n\n';
+      }
+
+      if (allFileContext) {
+        fileMessage += 'Chat Files:\n' + allFileContext;
+      }
+
+      fileMessage += '\n\nYou can reference these files by name when responding to user queries.';
+
+      systemMessages.push({
+        role: 'system',
+        content: fileMessage,
+      });
+    }
+
+    // Prepend system messages to the conversation
+    if (systemMessages.length > 0) {
+      messagesForModel = [...systemMessages, ...messagesForModel];
+    }
+
     const model = await myProvider.languageModel(selectedChatModel);
     const result = streamText({
       model,
-      messages: convertToModelMessages(uiMessages),
+      messages: messagesForModel,
       onFinish: ({ usage }) => {
         finalUsage = usage;
       },

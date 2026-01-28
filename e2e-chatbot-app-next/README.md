@@ -21,6 +21,8 @@ but has some [known limitations](#known-limitations) for other use cases. Work i
 - **Databricks Agent and Foundation Model Integration**: Direct connection to Databricks Agent serving endpoints and Agent Bricks
 - **Databricks Authentication**: Uses Databricks authentication to identify end users of the chat app and securely manage their conversations.
 - **Persistent Chat History (Optional)**: Leverages Databricks Lakebase (Postgres) for storing conversations, with governance and tight lakehouse integration. Can also run in ephemeral mode without database.
+- **Projects Organization**: Organize chats, files, and context into reusable project containers with shared instructions and context that apply to all chats within a project.
+- **File Upload Support**: Upload and attach files to chats with automatic text extraction for context-aware conversations.
 
 ## Prerequisites
 
@@ -373,3 +375,22 @@ from your current bundle state. In the above example, the `chatbot_lakebase` dat
 was deployed via `databricks bundle deploy`, and then manually deleted. This broke subsequent deployments of the bundle
 (because bundle state indicated the resource should exist, but it did not in the workspace). Running `databricks bundle unbind chatbot_lakebase` updated bundle state to reflect the deletion of the instance,
 unblocking subsequent deployment of the bundle via `databricks bundle deploy`.
+
+## Roadmap
+
+The application includes a comprehensive projects feature for organizing chats and is planning several enhancements:
+
+### Current Features (Released)
+- ✅ **Projects Organization**: Create projects to group related chats
+- ✅ **Project Context**: Add instructions that apply to all chats in a project
+- ✅ **Chat Management**: Move chats between projects, visual project indicators
+- ✅ **Project Overview**: Dedicated pages for managing project chats and settings
+
+### Planned Improvements
+- 🚧 **Databricks Volumes Integration**: Migrate file storage from database to Databricks Volumes for better scalability and performance (see [detailed migration plan](docs/databricks-volumes-migration.md))
+- 📋 **Project Templates**: Pre-configured projects with context for common use cases
+- 🔄 **Shared Files**: Upload files at project level that are available to all chats
+- 📊 **Project Analytics**: Track token usage and costs per project
+- 👥 **Team Collaboration**: Share projects with team members (future)
+
+For the complete roadmap and technical details, see [ROADMAP.md](ROADMAP.md).
