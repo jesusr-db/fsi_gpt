@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Tool } from 'ai';
-import { getDatabricksToken, getHostUrl } from '@chat-template/auth';
+import { getDatabricksToken } from '@chat-template/auth';
+import { getHostUrl } from '@chat-template/utils';
 
 /**
  * MCP Tool Schema - represents a tool from an MCP server
