@@ -269,7 +269,23 @@ chatRouter.post('/', requireAuth, async (req: Request, res: Response) => {
     let messagesForModel = convertToModelMessages(uiMessages);
     const systemMessages: any[] = [];
 
-    // Add project context as the first system message if available
+    // Add MCP tools system message if tools are available
+    const mcpTools = mcpToolProvider.getTools();
+    const mcpToolCount = Object.keys(mcpTools).length;
+
+    if (mcpToolCount > 0) {
+      const toolNames = Object.keys(mcpTools);
+      systemMessages.push({
+        role: 'system',
+        content: `You have access to the following tools for real-time information:
+- web_search: Use this tool to search the web for current information, news, and recent events. Always use this when asked about recent or current events, news, or information that might have changed after your knowledge cutoff.
+- web_fetch: Use this tool to fetch and analyze content from specific URLs provided by the user.
+
+When the user asks about recent events, current news, or anything that requires up-to-date information, you MUST use the web_search tool to provide accurate, current information.`,
+      });
+    }
+
+    // Add project context as a system message if available
     if (projectContext) {
       systemMessages.push({
         role: 'system',
@@ -305,14 +321,20 @@ chatRouter.post('/', requireAuth, async (req: Request, res: Response) => {
 
     const model = await myProvider.languageModel(selectedChatModel);
 
-    // Get MCP tools if available
-    const mcpTools = mcpToolProvider.getTools();
+    // MCP tools were already retrieved earlier for system message
+    if (mcpToolCount > 0) {
+      console.log(`[Chat] MCP tools available: ${Object.keys(mcpTools).join(', ')}`);
+    } else {
+      console.log('[Chat] No MCP tools available');
+    }
 
     // Combine Databricks tool with MCP tools
     const allTools = {
       [DATABRICKS_TOOL_CALL_ID]: DATABRICKS_TOOL_DEFINITION,
       ...mcpTools,
     };
+
+    console.log(`[Chat] Total tools passed to model: ${Object.keys(allTools).length}`);
 
     const result = streamText({
       model,
